@@ -68,6 +68,7 @@ func readFromRedis(proxy *context) (success bool) {
 		proxy.Log.Debug("Writing To Client")
 		bytes_written, err := proxy.Client.Write(data[:bytes_read])
 		if err != nil {
+			// TODO: Break outer loop instead of panic
 			panic(err)
 		}
 
@@ -116,6 +117,7 @@ func proxyConn(client *net.TCPConn) {
 		}
 
 		proxy.Log.Debug("Writing To Redis")
+		// TODO: if we error, we should parse and nil out redis?
 		bytes_written, err := proxy.Redis.Write(msg)
 		if err != nil {
 			proxy.Log.Error(err.Error())
@@ -125,7 +127,8 @@ func proxyConn(client *net.TCPConn) {
 		proxy.Log.WithFields(logrus.Fields{"bytes": bytes_written}).Debug("Wrote To Redis")
 
 		if !readFromRedis(&proxy) {
-			return
+			proxy.Redis = nil
+			proxy.Client.Write(fakeResponse(*cmd))
 		}
 	}
 	proxy.Log.Error("Broke out of loop!?")
