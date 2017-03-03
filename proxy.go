@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"strings"
 	"time"
 
 	"github.com/Sirupsen/logrus"
@@ -40,7 +41,7 @@ func readFromClient(proxy *context) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func readFromRedis(proxy *context) (success bool) {
+func readFromRedis(proxy *context, write bool) (success bool) {
 	for {
 		proxy.Log.Debug("Waiting for Redis")
 		data := make([]byte, 256)
@@ -65,14 +66,16 @@ func readFromRedis(proxy *context) (success bool) {
 		proxy.Log.WithFields(logrus.Fields{"bytes": bytes_read}).Debug("Read Redis")
 		proxy.Log.Debug("%s", hex.Dump(data[:bytes_read]))
 
-		proxy.Log.Debug("Writing To Client")
-		bytes_written, err := proxy.Client.Write(data[:bytes_read])
-		if err != nil {
-			// TODO: Break outer loop instead of panic
-			panic(err)
-		}
+		if write {
+			proxy.Log.Debug("Writing To Client")
+			bytes_written, err := proxy.Client.Write(data[:bytes_read])
+			if err != nil {
+				// TODO: Break outer loop instead of panic
+				panic(err)
+			}
 
-		proxy.Log.WithFields(logrus.Fields{"bytes": bytes_written}).Debug("Wrote To Client")
+			proxy.Log.WithFields(logrus.Fields{"bytes": bytes_written}).Debug("Wrote To Client")
+		}
 	}
 
 	return true
@@ -85,17 +88,6 @@ func proxyConn(client *net.TCPConn) {
 	proxy.Log.Info("Connect")
 
 	for {
-		if proxy.Redis == nil {
-			proxy.Log.Debug("Dialing Redis")
-			d := &net.Dialer{Deadline: time.Now().Add(time.Millisecond * 50)}
-			conn, err := d.Dial("tcp", *remoteAddr)
-			if err != nil {
-				proxy.Log.Info("Failed to dial Redis")
-			} else {
-				proxy.Redis = conn.(*net.TCPConn)
-				defer proxy.Redis.Close()
-			}
-		}
 
 		msg, err := readFromClient(&proxy)
 		if err != nil {
@@ -106,9 +98,40 @@ func proxyConn(client *net.TCPConn) {
 		if err != nil {
 			proxy.Log.Error(err)
 		} else {
+			// Try to connect to upstream
+			if proxy.Redis == nil {
+				proxy.Log.Debug("Dialing Redis")
+				d := &net.Dialer{Deadline: time.Now().Add(time.Millisecond * 50)}
+				conn, err := d.Dial("tcp", *remoteAddr)
+				if err != nil {
+					proxy.Log.Info("Failed to dial Redis")
+				} else {
+					proxy.Redis = conn.(*net.TCPConn)
+					defer proxy.Redis.Close()
+					// Try to transparently re-auth if needed
+					if proxy.Auth != "" {
+						proxy.Log.Info("Transparently Re-Authenticating")
+						proxy.Log.Info(fmt.Sprintf("*2\r\n$4\r\nAUTH\r\n$%d\r\n%s\r\n", len(proxy.Auth), proxy.Auth))
+						_, err := proxy.Redis.Write([]byte(fmt.Sprintf("*2\r\n$4\r\nAUTH\r\n$%d\r\n%s\r\n", len(proxy.Auth), proxy.Auth)))
+						if err != nil {
+							proxy.Log.Error(err.Error())
+							return
+						}
+						if !readFromRedis(&proxy, false) {
+							// Too broke to safely continue.
+							return
+						}
+					}
+				}
+			}
+
 			proxy.Log.Info(fmt.Sprintf("%s %s", cmd.Command, cmd.Arguments))
 			if proxy.Redis == nil {
 				proxy.Client.Write(fakeResponse(*cmd))
+			}
+			// Save Auth for disconnect/reconnect?
+			if strings.ToUpper(cmd.Command) == "AUTH" {
+				proxy.Auth = cmd.Arguments[0]
 			}
 		}
 
@@ -126,7 +149,7 @@ func proxyConn(client *net.TCPConn) {
 		}
 		proxy.Log.WithFields(logrus.Fields{"bytes": bytes_written}).Debug("Wrote To Redis")
 
-		if !readFromRedis(&proxy) {
+		if !readFromRedis(&proxy, true) {
 			proxy.Redis = nil
 			proxy.Client.Write(fakeResponse(*cmd))
 		}

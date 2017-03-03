@@ -18,7 +18,6 @@ func fakeResponse(c redis.Command) []byte {
 		if *authKey == "" {
 			return []byte("-ERR Client sent AUTH, but no password is set\r\n")
 		} else if *authKey == c.Arguments[0] {
-			// TODO: Save this state for if we re-connect
 			return []byte("+OK\r\n")
 		} else {
 			return []byte("-ERR invalid password\r\n")
@@ -36,6 +35,8 @@ func fakeResponse(c redis.Command) []byte {
 	// These are related to worker management
 	case "GET":
 		return []byte("$-1\r\n")
+	case "SET":
+		return []byte("+OK\r\n")
 	case "DEL":
 		return []byte(":0\r\n")
 	case "SADD":
