@@ -33,6 +33,19 @@ func fakeResponse(c redis.Command) []byte {
 			time.Sleep(time.Second * time.Duration(sleep))
 		}
 		return []byte("*-1\r\n")
+	// These are related to worker management
+	case "GET":
+		return []byte("$-1\r\n")
+	case "DEL":
+		return []byte(":0\r\n")
+	case "SADD":
+		return []byte(":1\r\n")
+	case "SREM":
+		return []byte(":0\r\n")
+	case "SMEMBERS":
+		return []byte("*0\r\n")
+	case "SISMEMBER":
+		return []byte(":0\r\n")
 	default:
 		log.Debug(fmt.Sprintf("fakeResponse: Unknown Command, %s %s", uc, c.Arguments))
 		return []byte("-ERR Redis Server Unavailable\r\n")
