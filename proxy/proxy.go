@@ -77,6 +77,11 @@ func (pc *ProxiedConnection) Run() {
 				pc.redis = nil
 			}
 			pc.log.Debug("Read from redis", "bytes", response)
+
+			// 5.1 If it was an AUTH and it worked, we should store that.
+			if strings.ToUpper(cmd.Command) == "AUTH" && bytes.Equal(response, []byte("+OK\r\n")) {
+				pc.authenticated = true
+			}
 		}
 
 		// 6. Write to FakeRedis (?)
@@ -142,7 +147,6 @@ func (pc *ProxiedConnection) readFromRedis() ([]byte, error) {
 				return nil, &SocketError{err.Error()}
 			}
 		}
-		// hex.Dump(data[:bytes_read])
 		buf.Write(data[:read])
 	}
 	return buf.Bytes(), nil
@@ -155,7 +159,6 @@ func (pc *ProxiedConnection) writeToRedis(msg []byte) {
 		// TODO: Break outer loop instead of panic
 		panic(err)
 	}
-	// TODO: Log?
 }
 
 func (pc *ProxiedConnection) connect() bool {
@@ -172,7 +175,16 @@ func (pc *ProxiedConnection) connect() bool {
 		if pc.authenticated {
 			pc.log.Debug("Transparently Re-Authenticating")
 			pc.writeToRedis([]byte(fmt.Sprintf("*2\r\n$4\r\nAUTH\r\n$%d\r\n%s\r\n", len(*pc.config.auth), *pc.config.auth)))
-			// TODO: Test for success
+			okplease, err := pc.readFromRedis()
+			if err != nil {
+				// This is probably not safe to recover from.
+				pc.redis.Close()
+				panic(err)
+			}
+			if !bytes.Equal(okplease, []byte("+OK\r\n")) {
+				pc.redis.Close()
+				panic("Bad response to re-authentication.")
+			}
 		}
 	}
 	return true
