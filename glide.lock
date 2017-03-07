@@ -1,0 +1,8 @@
+hash: c24b0971715c964c56a6e71fe4ae0c535b8392a23a96f33d7436cc899a7f2226
+updated: 2017-03-06T14:09:48.383463432-06:00
+imports:
+- name: github.com/inconshreveable/log15
+  version: 39bacc234bf1afd0b68573e95b45871f67ba2cd4
+  repo: https://github.com/inconshreveable/log15.git
+  vcs: git
+testImports: []

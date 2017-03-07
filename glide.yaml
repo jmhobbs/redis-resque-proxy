@@ -1,0 +1,5 @@
+package: github.com/jmhobbs/redis-resque-proxy
+import:
+- package: github.com/inconshreveable/log15
+  repo: https://github.com/inconshreveable/log15.git
+  vcs: git

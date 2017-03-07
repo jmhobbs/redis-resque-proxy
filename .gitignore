@@ -1,0 +1,6 @@
+.glide/
+*.out
+*.log
+resque-proxy.*
+# I don't like commiting deps
+vendor/
