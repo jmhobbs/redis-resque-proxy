@@ -183,6 +183,7 @@ func (pc *ProxiedConnection) connect() bool {
 			}
 			if !bytes.Equal(okplease, []byte("+OK\r\n")) {
 				pc.redis.Close()
+				pc.log.Warn("Bad response from re-authentication", "response", string(okplease))
 				panic("Bad response to re-authentication.")
 			}
 		}
